@@ -6,17 +6,17 @@ rename-icon: 'icon'
 sdk: org.freedesktop.Sdk
 command: start_launcher.sh
 finish-args:
-- "--socket=x11"
 - "--socket=wayland"
+- "--socket=x11"
 - "--share=ipc"
 # Required for controller support
 - "--device=all"
 - "--socket=pulseaudio"
 - "--persist=."
 - "--allow=multiarch"
+# Used to easily access your DRIVER2 image, can be removed.
 - "--filesystem=home"
 - "--env=JAVA_HOME=/app/jdk"
-- "--env=SDL_DYNAMIC_API=/app/lib/i386-linux-gnu/libSDL2-2.0.so.0"
 - "--env=PATH=/usr/bin:/app/bin:/app/jdk/bin"
 add-extensions:
   org.freedesktop.Platform.Compat.i386:
@@ -65,6 +65,34 @@ modules:
     - type: file
       dest-filename: ld.so.conf
       url: data:/app/lib32%0A/app/lib/i386-linux-gnu%0A
+# using the latest SDL2 for better wayland support
+- name: SDL2
+  config-opts:
+    - --disable-static
+  buildsystem: autotools
+  build-options: *compat-i386-build-options
+  cleanup:
+    - /bin
+    - /include
+    - /lib/pkgconfig
+    - /share
+  sources:
+    - type: git
+      url: https://github.com/libsdl-org/SDL
+      tag: release-2.0.20
+  modules:
+    - name: libdecor
+      config-opts:
+        - -Ddemo=false
+      buildsystem: meson
+      build-options: *compat-i386-build-options
+      cleanup:
+        - /include
+        - /lib/pkgconfig
+      sources:
+        - type: git
+          url: https://gitlab.gnome.org/jadahl/libdecor/
+          commit: 8e465f1254a84ff419134df47fa6c3f72b6b784f
 # libnotify is required for the Launcher (Ultimate++)
 - name: "libnotify"
   build-options: *compat-i386-build-options
@@ -142,6 +170,7 @@ modules:
     - type: shell
       commands:
         - echo "#!/bin/sh" > start_launcher.sh # Starting Launcher script
+        - echo "[[ \$(echo \$XDG_SESSION_TYPE) = wayland ]] && export SDL_VIDEODRIVER=wayland" >> start_launcher.sh
         - echo "cd /app/game/bin/" >> start_launcher.sh
         - echo "[ ! -f /var/data/REDRIVER2.log ] && touch REDRIVER2.log" >> start_launcher.sh
         - echo "[ ! -f /var/cache/idxfile.tmp ] && touch idxfile.tmp" >> start_launcher.sh
