@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=REDRIVER2
+Icon=
+Exec=start_launcher.sh
+Categories=Game;

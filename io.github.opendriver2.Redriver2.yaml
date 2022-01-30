@@ -1,0 +1,157 @@
+---
+app-id: io.github.opendriver2.Redriver2
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+rename-icon: 'icon'
+sdk: org.freedesktop.Sdk
+command: start_launcher.sh
+finish-args:
+- "--socket=x11"
+- "--socket=wayland"
+- "--share=ipc"
+# Required for controller support
+- "--device=all"
+- "--socket=pulseaudio"
+- "--persist=."
+- "--allow=multiarch"
+- "--filesystem=home"
+- "--env=JAVA_HOME=/app/jdk"
+- "--env=SDL_DYNAMIC_API=/app/lib/i386-linux-gnu/libSDL2-2.0.so.0"
+- "--env=PATH=/usr/bin:/app/bin:/app/jdk/bin"
+add-extensions:
+  org.freedesktop.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: '21.08'
+  org.freedesktop.Platform.Compat.i386.Debug:
+    directory: lib/debug/lib/i386-linux-gnu
+    version: '21.08'
+    no-autodownload: true
+  # required for hardware acceleration
+  org.freedesktop.Platform.GL32:
+    directory: lib/i386-linux-gnu/GL
+    version: '1.4'
+    versions: 21.08;1.4
+    subdirectories: true
+    no-autodownload: true
+    autodelete: false
+    add-ld-path: lib
+    merge-dirs: vulkan/icd.d;glvnd/egl_vendor.d;OpenCL/vendors;lib/dri;lib/d3d;vulkan/explicit_layer.d;vulkan/implicit_layer.d
+    download-if: active-gl-driver
+    enable-if: active-gl-driver
+sdk-extensions:
+- org.freedesktop.Sdk.Compat.i386
+- org.freedesktop.Sdk.Extension.toolchain-i386
+- org.freedesktop.Sdk.Extension.openjdk11
+x-compat-i386-build-options: &compat-i386-build-options
+  prepend-pkg-config-path: "/app/lib32/pkgconfig:/usr/lib/i386-linux-gnu/pkgconfig"
+  ldflags: "-L/app/lib32"
+  prepend-path: "/usr/lib/sdk/toolchain-i386/bin"
+  env:
+    CC: i686-unknown-linux-gnu-gcc
+    CXX: i686-unknown-linux-gnu-g++
+  libdir: "/app/lib32"
+modules:
+# JRE is required for jpsxdec (PS1 AV converter)
+- name: openjdk
+  buildsystem: simple
+  build-commands:
+  - /usr/lib/sdk/openjdk11/installjdk.sh
+- name: ld-i386
+  buildsystem: simple
+  build-commands:
+  - mkdir -p /app/lib/i386-linux-gnu /app/lib/debug/lib/i386-linux-gnu /app/lib/i386-linux-gnu/GL
+  - install -Dm644 -t /app/etc ld.so.conf 
+  sources:
+    - type: file
+      dest-filename: ld.so.conf
+      url: data:/app/lib32%0A/app/lib/i386-linux-gnu%0A
+# libnotify is required for the Launcher (Ultimate++)
+- name: "libnotify"
+  build-options: *compat-i386-build-options
+  buildsystem: meson
+  cleanup:
+  - "/bin"
+  config-opts:
+  - "-Dtests=false"
+  - "-Dintrospection=disabled"
+  - "-Dman=false"
+  - "-Dgtk_doc=false"
+  sources:
+    - type: "git"
+      url: "https://gitlab.gnome.org/GNOME/libnotify.git"
+      tag: "0.7.9"
+- name: premake5
+  buildsystem: simple
+  build-commands:
+  - make -f Bootstrap.mak linux
+  - install bin/release/premake5 /app/bin
+  sources:
+    - type: git
+      url: "https://github.com/premake/premake-core.git"
+      tag: "v5.0.0-beta1"
+- name: Launcher
+  buildsystem: simple
+  build-options: *compat-i386-build-options
+  build-commands:
+  - ls -la
+  - mkdir upp/uppsrc/Launcher
+  - find . -maxdepth 1 -mindepth 1 -not -name upp -exec mv '{}' upp/uppsrc/Launcher \;
+  - cd upp && ./umks32 uppsrc Launcher GCC -rbM=makefile.gcc.linux +GUI,SSE2,SHARED Launcher
+  - sed -i 's/CXX = c++/CXX = i686-unknown-linux-gnu-g++/g' upp/makefile.gcc.linux
+  - cd upp && make -f makefile.gcc.linux
+  - mkdir -p /app/game/bin
+  - install upp/Launcher /app/game/bin/Launcher
+  - chmod a+x /app/game/bin/Launcher
+  sources:
+    - type: git
+      url: https://github.com/OpenDriver2/Launcher.git
+    - type: archive
+      archive-type: "tar-xz"
+      strip-components: 0
+      # I cannot use the latest stable relase because it's completly borked on linux
+      url: https://www.ultimatepp.org/downloads/upp-posix-16181.tar.xz
+      sha256: "96b3d598cf5b6ee7fa5aa111b69fe4a467f3575aeefc394f01f5e33689fdcb69"
+- name: REDRIVER2
+  buildsystem: simple
+  build-options: *compat-i386-build-options
+  build-commands:
+  - cd src_rebuild && premake5 gmake2
+  - cd src_rebuild/project_gmake2_linux && make config=release_x86 -j$(nproc)
+  - mkdir -p /app/game/bin /app/game/bin/install /app/game/data /app/bin /app/lib /app/share/applications/ /app/share/appdata /var/data/install/ /var/data/DRIVER2/ /var/data/logs /app/share/icons/hicolor/256x256/apps
+  - install start.sh /app/game/bin/REDRIVER2
+  - cp -r data/* /app/game/data
+  - install src_rebuild/bin/Release/REDRIVER2 /app/game/bin/REDRIVER2_game
+  - install -m644 .flatpak/io.github.opendriver2.Redriver2.appdata.xml /app/share/appdata/
+  - install .flatpak/icon.png /app/share/icons/hicolor/256x256/apps/
+  - chmod a+x /app/game/bin/REDRIVER2
+  - chmod a+x /app/game/bin/REDRIVER2_game
+  - ln -s /var/data/config.ini /app/game/bin/config.ini
+  - ln -s /var/data/cutscene_recorder.ini /app/game/bin/cutscene_recorder.ini
+  - ln -s /var/data/DRIVER2 /app/game/bin/DRIVER2
+  - cp -r data/install/* /app/game/bin/install
+  - ln -s /var/cache/idxfile.tmp /app/game/bin/install/idxfile.tmp
+  - ln -s /var/data/logs/REDRIVER2.log /app/game/bin/REDRIVER2.log
+  - install start_launcher.sh /app/bin
+  - chmod a+x /app/bin/start_launcher.sh
+  - install io.github.opendriver2.Redriver2.desktop /app/share/applications/
+  sources:
+    - type: git
+      url: "https://github.com/OpenDriver2/REDRIVER2.git"
+      tag: "7.4-rc1"
+    - type: shell
+      commands:
+        - echo "#!/bin/sh" > start_launcher.sh # Starting Launcher script
+        - echo "cd /app/game/bin/" >> start_launcher.sh
+        - echo "[ ! -f /var/cache/idxfile.tmp ] && touch idxfile.tmp" >> start_launcher.sh
+        - echo "[ ! -d /var/data/DRIVER2 ] && mkdir -p /var/data/DRIVER2" >> start_launcher.sh
+        - echo "[ ! -f /var/data/config.ini ] && cp /app/game/data/config.ini /var/data/config.ini" >> start_launcher.sh
+        - echo "[ ! -f /var/data/cutscene_recorder.ini ] && cp /app/game/data/cutscene_recorder.ini /var/data/cutscene_recorder.ini" >> start_launcher.sh
+        - echo "./Launcher" >> start_launcher.sh
+        - echo "#!/bin/sh" > start.sh # Starting game script
+        - echo "cd /app/game/bin" >> start.sh
+        - echo "args=''" >> start.sh
+        - echo "while [[ "$#" -gt 0 ]]; do args+="$1 "; shift; done" >> start.sh
+        - echo "[ -z $REDRIVER2_BIN ] && ./REDRIVER2_game" >> start.sh
+        - echo "[ ! -z $REDRIVER2_BIN ] && exec $REDRIVER2_BIN" >> start.sh
+    - type: file
+      path: io.github.opendriver2.Redriver2.desktop
